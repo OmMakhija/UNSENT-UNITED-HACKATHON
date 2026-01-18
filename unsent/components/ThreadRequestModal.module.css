@@ -1,0 +1,48 @@
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.modalCard {
+  background: rgba(20,20,20,0.95);
+  border-radius: 16px;
+  padding: 2rem;
+  width: 320px;
+  text-align: center;
+  color: white;
+}
+
+.preview {
+  opacity: 0.8;
+  margin: 1rem 0;
+  font-style: italic;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.accept {
+  background: #4ECDC4;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 20px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.reject {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 0.6rem 1.2rem;
+  border-radius: 20px;
+  color: white;
+  cursor: pointer;
+}
