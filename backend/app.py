@@ -11,22 +11,24 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from sentiment import detect_emotion
-from supabase_client import supabase
 from sockets import register_socket_handlers
 from thread_matcher import assign_thread
+
+from supabase_client import supabase
+
 
 # ------------------------
 # App setup
 # ------------------------
 app = Flask(__name__)
 
-# ✅ Flask CORS (REST endpoints)
+# ✅ Allow all origins (safe for hackathon)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ✅ Socket.IO CORS (CRITICAL FIX)
+# ✅ Socket.IO (CORS FIXED)
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",   # ← THIS FIXES EVERYTHING
+    cors_allowed_origins="*",
     async_mode="eventlet",
     ping_timeout=60,
     ping_interval=25,
@@ -34,14 +36,14 @@ socketio = SocketIO(
     engineio_logger=True
 )
 
-# Register socket event handlers
+# Register socket handlers
 register_socket_handlers(socketio)
 
 print("=" * 60)
 print("🚀 UNSENT Backend Server")
-print("=" * 60)
 print("✅ Socket handlers registered")
 print("=" * 60)
+
 
 # ------------------------
 # Health check
@@ -50,45 +52,54 @@ print("=" * 60)
 def health():
     return "UNSENT backend alive"
 
+
 # ------------------------
-# Submit unsent message (SINGLE SOURCE OF TRUTH)
+# Submit unsent message
 # ------------------------
 @app.route("/submit", methods=["POST"])
 def submit():
-    data = request.get_json(force=True, silent=True) or {}
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        text = data.get("text", "").strip()[:400]
 
-    text = data.get("text", "").strip()[:400]
-    if not text:
-        return jsonify({"error": "Missing text"}), 400
+        if not text:
+            return jsonify({"error": "Missing text"}), 400
 
-    emotion, score = detect_emotion(text)
-    thread_id = assign_thread(text, emotion)
+        emotion, score = detect_emotion(text)
+        thread_id = assign_thread(text, emotion)
 
-    message_id = str(uuid.uuid4())
+        message_id = str(uuid.uuid4())
 
-    supabase.table("unsent_messages").insert({
-        "id": message_id,
-        "text": text,
-        "emotion": emotion,
-        "emotion_score": score,
-        "language": "unknown",
-        "resonance_count": 0,
-        "lat": random.uniform(-60, 60),
-        "lng": random.uniform(-180, 180),
-        "thread_id": thread_id,
-    }).execute()
+        # Insert message
+        supabase.insert("unsent_messages", {
+            "id": message_id,
+            "text": text,
+            "emotion": emotion,
+            "emotion_score": score,
+            "language": "unknown",
+            "resonance_count": 0,
+            "lat": random.uniform(-60, 60),
+            "lng": random.uniform(-180, 180),
+            "thread_id": thread_id,
+        })
 
-    supabase.table("thread_messages").insert({
-        "id": str(uuid.uuid4()),
-        "thread_id": thread_id,
-        "message_id": message_id,
-    }).execute()
+        # Link to thread
+        supabase.insert("thread_messages", {
+            "id": str(uuid.uuid4()),
+            "thread_id": thread_id,
+            "message_id": message_id,
+        })
 
-    return jsonify({
-        "success": True,
-        "id": message_id,
-        "thread_id": thread_id,
-    })
+        return jsonify({
+            "success": True,
+            "id": message_id,
+            "thread_id": thread_id,
+        })
+
+    except Exception as e:
+        print("❌ /submit error:", repr(e))
+        return jsonify({"error": str(e)}), 500
+
 
 # ------------------------
 # Fetch stars
@@ -96,40 +107,41 @@ def submit():
 @app.route("/stars", methods=["GET"])
 def get_stars():
     try:
-        res = supabase.table("unsent_messages").select("*").execute()
-        return jsonify(res.data)
+        data = supabase.select("unsent_messages")
+        return jsonify(data)
     except Exception as e:
-        print("❌ /stars error:", e)
+        print("❌ /stars error:", repr(e))
         return jsonify({"error": str(e)}), 500
+
 
 # ------------------------
 # Get thread for a star
 # ------------------------
 @app.route("/thread/<star_id>", methods=["GET"])
 def get_thread(star_id):
-    res = (
-        supabase
-        .table("unsent_messages")
-        .select("thread_id")
-        .eq("id", star_id)
-        .single()
-        .execute()
-    )
-    return jsonify({"thread_id": res.data["thread_id"]})
+    try:
+        rows = supabase.select("unsent_messages?id=eq." + star_id)
+        if not rows:
+            return jsonify({"error": "Star not found"}), 404
+        return jsonify({"thread_id": rows[0]["thread_id"]})
+    except Exception as e:
+        print("❌ /thread error:", repr(e))
+        return jsonify({"error": str(e)}), 500
+
 
 # ------------------------
 # Cleanup old stars
 # ------------------------
 @app.route("/cleanup", methods=["POST"])
 def cleanup_old_stars():
-    cutoff = datetime.utcnow() - timedelta(hours=24)
+    try:
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        supabase.delete_older_than("unsent_messages", cutoff.isoformat())
+        return jsonify({"ok": True})
+    except Exception as e:
+        print("❌ /cleanup error:", repr(e))
+        return jsonify({"error": str(e)}), 500
 
-    supabase.table("unsent_messages") \
-        .delete() \
-        .lt("created_at", cutoff.isoformat()) \
-        .execute()
-
-    return jsonify({"ok": True})
 
 # ------------------------
 # Run server
