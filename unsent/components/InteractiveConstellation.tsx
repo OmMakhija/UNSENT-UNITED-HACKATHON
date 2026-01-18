@@ -132,13 +132,13 @@ export default function InteractiveConstellation(
     };
   }, []);
 
-  /* ---------- FILTER VISIBLE STARS ---------- */
-  const visibleStars = allStars.filter((s) => activeStarIds.has(s.id));
+  /* ---------- FIXED VISIBILITY ---------- */
+  const visibleStars = allStars;
 
   /* ---------- RENDER ---------- */
   return (
     <div className={styles.wrapper}>
-      {/* NAV / CREATE STAR */}
+      {/* CREATE STAR BUTTON */}
       <div
         className={styles.nav}
         style={{ position: "fixed", top: 20, right: 20, zIndex: 1000 }}
