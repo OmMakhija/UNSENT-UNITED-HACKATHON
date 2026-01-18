@@ -54,8 +54,8 @@ def register_socket_handlers(socketio):
             if sid in users:
                 users.discard(sid)
                 leave_room(thread_id, sid=sid)
-            if not users:
-                del ACTIVE_THREADS[thread_id]
+                print(f"👋 {sid} removed from thread {thread_id}")
+            # DON'T delete the thread even if empty - allows reconnection
 
     # -----------------------------
     # Register star ownership - UPDATED
@@ -171,6 +171,8 @@ def register_socket_handlers(socketio):
         join_room(thread_id, sid=requester_sid)
 
         print(f"✅ Thread created: {thread_id}")
+        print(f"📊 Added to ACTIVE_THREADS: {ACTIVE_THREADS[thread_id]}")
+        print(f"📊 Total active threads: {len(ACTIVE_THREADS)}")
 
         emit("thread_accepted", {"thread_id": thread_id}, to=owner_sid)
         emit("thread_accepted", {"thread_id": thread_id}, to=requester_sid)
@@ -183,6 +185,8 @@ def register_socket_handlers(socketio):
         thread_id = data.get("thread_id")
         if thread_id:
             join_room(thread_id)
+            print(f"👥 {request.sid} joined thread room: {thread_id}")
+            print(f"📊 Thread {thread_id} now has users: {ACTIVE_THREADS.get(thread_id, 'not in ACTIVE_THREADS')}")
 
     # -----------------------------
     # Drawing relay
@@ -190,8 +194,18 @@ def register_socket_handlers(socketio):
     @socketio.on("draw")
     def draw(data):
         thread_id = data.get("thread_id")
+        print(f"🎨 DRAW EVENT RECEIVED from {request.sid}")
+        print(f"   Thread ID: {thread_id}")
+        print(f"   Thread in ACTIVE_THREADS? {thread_id in ACTIVE_THREADS}")
+        print(f"   Drawing data: fromX={data.get('fromX')}, fromY={data.get('fromY')}")
+        
         if thread_id in ACTIVE_THREADS:
+            print(f"✅ Relaying draw to thread room: {thread_id}")
             emit("draw", data, room=thread_id, include_self=False)
+            print(f"✅ Draw event relayed")
+        else:
+            print(f"❌ Thread {thread_id} NOT in ACTIVE_THREADS!")
+            print(f"   Active threads: {list(ACTIVE_THREADS.keys())}")
 
     # -----------------------------
     # Chat relay
@@ -210,9 +224,8 @@ def register_socket_handlers(socketio):
         thread_id = data.get("thread_id")
         sid = request.sid
 
-        if thread_id in ACTIVE_THREADS:
-            ACTIVE_THREADS[thread_id].discard(sid)
+        if thread_id:
             leave_room(thread_id, sid=sid)
-
-            if not ACTIVE_THREADS[thread_id]:
-                del ACTIVE_THREADS[thread_id]
+            print(f"👋 {sid} left thread room: {thread_id}")
+            # DON'T remove from ACTIVE_THREADS here - only on disconnect
+            # This allows reconnection if component remounts
