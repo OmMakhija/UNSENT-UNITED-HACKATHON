@@ -14,6 +14,7 @@ interface DrawingCanvasProps {
   threadId: string;
   className?: string;
   onInteract?: () => void;
+  side: "left" | "right"; // 🆕 Which side of canvas this user can draw on
 }
 
 export interface DrawingCanvasRef {
@@ -24,7 +25,7 @@ export interface DrawingCanvasRef {
 type Point = { x: number; y: number };
 
 const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
-  ({ active, color, threadId, className, onInteract }, ref) => {
+  ({ active, color, threadId, className, onInteract, side }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const isDrawing = useRef(false);
     const lastPos = useRef<Point | null>(null);
@@ -62,6 +63,14 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          
+          // 🆕 Draw dividing line in the middle
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(rect.width / 2, 0);
+          ctx.lineTo(rect.width / 2, rect.height);
+          ctx.stroke();
         }
       };
 
@@ -87,9 +96,27 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
 
     /* ---------- SOCKET: RECEIVE DRAW ---------- */
     useEffect(() => {
+      console.log("🎨 DrawingCanvas: Setting up draw listener for thread:", threadId);
+      console.log("🎨 My side:", side);
+      
       const handleRemoteDraw = (data: any) => {
-        if (data.thread_id !== threadId) return;
+        console.log("📥 RECEIVED DRAW EVENT:", {
+          threadId: data.thread_id,
+          myThreadId: threadId,
+          fromX: data.fromX,
+          fromY: data.fromY,
+          toX: data.toX,
+          toY: data.toY,
+          color: data.color,
+          matches: data.thread_id === threadId
+        });
+        
+        if (data.thread_id !== threadId) {
+          console.log("❌ Thread ID mismatch, ignoring");
+          return;
+        }
 
+        console.log("✅ Drawing remote line on canvas");
         drawLine(
           { x: data.fromX, y: data.fromY },
           { x: data.toX, y: data.toY },
@@ -98,7 +125,9 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       };
 
       socket.on("draw", handleRemoteDraw);
+      
       return () => {
+        console.log("🔇 Removing draw listener");
         socket.off("draw", handleRemoteDraw);
       };
     }, [threadId]);
@@ -123,12 +152,33 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       };
     };
 
+    // 🆕 Check if point is on user's allowed side
+    const isOnMySide = (point: Point): boolean => {
+      const canvas = canvasRef.current;
+      if (!canvas) return false;
+
+      const rect = canvas.getBoundingClientRect();
+      const midpoint = rect.width / 2;
+
+      if (side === "left") {
+        return point.x < midpoint;
+      } else {
+        return point.x >= midpoint;
+      }
+    };
+
     const startDrawing = (
       e: React.MouseEvent | React.TouchEvent
     ) => {
       if (!active || !socket.connected) return;
+      
+      const pos = getPos(e);
+      
+      // 🆕 Only allow drawing on user's side
+      if (!isOnMySide(pos)) return;
+      
       isDrawing.current = true;
-      lastPos.current = getPos(e);
+      lastPos.current = pos;
       onInteract?.();
     };
 
@@ -138,21 +188,33 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       if (!isDrawing.current || !active || !lastPos.current) return;
 
       const currentPos = getPos(e);
+      
+      // 🆕 Stop drawing if cursor crosses to other side
+      if (!isOnMySide(currentPos)) {
+        console.log("⚠️ Crossed to other side, stopping");
+        stopDrawing();
+        return;
+      }
+
       const from = lastPos.current;
       const to = currentPos;
 
       // Draw locally
       drawLine(from, to, color);
+      console.log("🖌️ Drawing locally:", { from, to, color });
 
       // Emit to other participant
-      socket.emit("draw", {
+      const drawData = {
         thread_id: threadId,
         fromX: from.x,
         fromY: from.y,
         toX: to.x,
         toY: to.y,
         color,
-      });
+      };
+      
+      console.log("📤 EMITTING DRAW EVENT:", drawData);
+      socket.emit("draw", drawData);
 
       lastPos.current = currentPos;
     };
@@ -173,6 +235,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={stopDrawing}
+        style={{ cursor: active ? 'crosshair' : 'default' }}
       />
     );
   }

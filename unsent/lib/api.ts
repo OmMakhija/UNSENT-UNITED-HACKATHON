@@ -1,8 +1,7 @@
-const API_URL = "http://localhost:5000";
-import { getClientId } from "@/lib/clientId";
+const API_URL = "http://localhost:5001";
 
 export async function submitUnsent(text: string) {
-  const res = await fetch("http://localhost:5000/submit", {
+  const res = await fetch(`${API_URL}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -14,8 +13,6 @@ export async function submitUnsent(text: string) {
 
   return res.json();
 }
-
-
 
 export async function fetchStars() {
   const res = await fetch(`${API_URL}/stars`);

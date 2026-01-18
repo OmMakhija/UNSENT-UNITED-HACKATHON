@@ -18,11 +18,13 @@ const PREDEFINED_COLORS = [
 interface KnotSessionProps {
   threadId: string;
   onClose: () => void;
+  userRole: "requester" | "receiver"; // 🆕 Who initiated the connection
 }
 
 export default function KnotSession({
   threadId,
   onClose,
+  userRole,
 }: KnotSessionProps) {
   const [timeLeft, setTimeLeft] = useState(263);
   const [sessionState, setSessionState] = useState<
@@ -34,14 +36,25 @@ export default function KnotSession({
 
   /* ---------- JOIN / LEAVE THREAD ---------- */
   useEffect(() => {
-    if (!socket.connected) return;
+    console.log("🎨 KnotSession mounted");
+    console.log("🆔 Thread ID:", threadId);
+    console.log("👤 User Role:", userRole);
+    console.log("📡 Socket connected?", socket.connected);
+    
+    if (!socket.connected) {
+      console.log("❌ Socket not connected!");
+      return;
+    }
 
+    console.log("📤 Emitting join_thread...");
     socket.emit("join_thread", { thread_id: threadId });
+    console.log("✅ join_thread emitted");
 
     return () => {
+      console.log("📤 Emitting leave_thread...");
       socket.emit("leave_thread", { thread_id: threadId });
     };
-  }, [threadId]);
+  }, [threadId, userRole]);
 
   /* ---------- TIMER ---------- */
   useEffect(() => {
@@ -148,22 +161,57 @@ export default function KnotSession({
           </div>
         )}
 
-        {/* ---------- SHARED CANVAS ---------- */}
-        <div
-          className={styles.canvasArea}
-          style={{ opacity: sessionState === "active" ? 1 : 0 }}
-        >
-          <div className={styles.canvasContainer}>
-            <span className={styles.canvasLabel}>Shared Space</span>
-            <DrawingCanvas
-              ref={canvasRef}
-              active={sessionState === "active"}
-              color={activeColor}
-              threadId={threadId}
-              className={styles.drawingCanvas}
-            />
+        {/* ---------- SPLIT CANVAS ---------- */}
+        {sessionState === "active" && (
+          <div style={{ 
+            flex: 1, 
+            display: 'flex',
+            position: 'relative',
+          }}>
+            {/* Left side label */}
+            <div style={{
+              position: 'absolute',
+              top: '1rem',
+              left: '25%',
+              transform: 'translateX(-50%)',
+              color: 'rgba(255,255,255,0.5)',
+              fontSize: '0.9rem',
+              zIndex: 10,
+              pointerEvents: 'none',
+            }}>
+              Your Side
+            </div>
+
+            {/* Right side label */}
+            <div style={{
+              position: 'absolute',
+              top: '1rem',
+              right: '25%',
+              transform: 'translateX(50%)',
+              color: 'rgba(255,255,255,0.5)',
+              fontSize: '0.9rem',
+              zIndex: 10,
+              pointerEvents: 'none',
+            }}>
+              Their Side
+            </div>
+
+            {/* Single canvas for both sides */}
+            <div style={{ 
+              flex: 1,
+              position: 'relative',
+            }}>
+              <DrawingCanvas
+                ref={canvasRef}
+                active={sessionState === "active"}
+                color={activeColor}
+                threadId={threadId}
+                side={userRole === "requester" ? "left" : "right"} // 🆕 Requester draws left, receiver draws right
+                className={styles.drawingCanvas}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ---------- FINISHED STATE ---------- */}
         {sessionState !== "active" && (

@@ -1,7 +1,6 @@
 "use client";
 
-import styles from "./ThreadRequestModal.module.css";
-import { Message, EMOTION_COLORS, EMOTION_GLOWS } from "@/data/messages";
+import { Message, EMOTION_COLORS } from "@/data/messages";
 
 interface Props {
   requesterStar: Message | null;
@@ -14,55 +13,89 @@ export default function ThreadRequestModal({
   onAccept,
   onReject,
 }: Props) {
-  // Safety check - if no star data, show basic message
+  console.log("🎨 ThreadRequestModal rendering", { requesterStar });
+
+  // Safety check
   if (!requesterStar) {
     return (
-      <div className={styles.overlay} style={{ zIndex: 300 }}>
-        <div className={styles.card} style={{ padding: '2rem' }}>
-          <h3>Someone wants to connect</h3>
-          <p style={{ marginBottom: '2rem' }}>Loading their message...</p>
-          <div className={styles.actions}>
-            <button 
-              className={styles.reject} 
-              onClick={onReject}
-              style={{
-                flex: 1,
-                padding: '1rem',
-                background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.2)',
-                borderRadius: '12px',
-                color: 'rgba(255,255,255,0.7)',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-body)',
-                fontSize: '1rem'
-              }}
-            >
-              Not now
-            </button>
-          </div>
+      <div 
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.9)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+        }}
+      >
+        <div 
+          style={{
+            background: 'rgba(20,20,30,0.95)',
+            padding: '2rem',
+            borderRadius: '16px',
+            maxWidth: '500px',
+            width: '90%',
+          }}
+        >
+          <h3 style={{ marginBottom: '1rem', color: '#fff' }}>Someone wants to connect</h3>
+          <p style={{ marginBottom: '2rem', opacity: 0.7, color: '#fff' }}>Loading their message...</p>
+          <button 
+            onClick={onReject}
+            style={{
+              width: '100%',
+              padding: '1rem',
+              background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '12px',
+              color: 'rgba(255,255,255,0.7)',
+              cursor: 'pointer',
+              fontSize: '1rem',
+            }}
+          >
+            Not now
+          </button>
         </div>
       </div>
     );
   }
 
+  const emotionColor = EMOTION_COLORS[requesterStar.emotion] || "#ffffff";
+
   return (
-    <div className={styles.overlay} style={{ zIndex: 300 }}>
+    <div 
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+      }}
+    >
       <div 
-        className={styles.card}
         style={{
+          background: `linear-gradient(180deg, rgba(20,20,30,0.95) 0%, ${emotionColor}10 100%)`,
+          border: `1px solid ${emotionColor}40`,
+          boxShadow: `0 0 20px ${emotionColor}60`,
+          padding: '2rem',
+          borderRadius: '16px',
           maxWidth: '500px',
-          background: `linear-gradient(180deg, rgba(20,20,30,0.95) 0%, ${EMOTION_COLORS[requesterStar.emotion]}10 100%)`,
-          border: `1px solid ${EMOTION_COLORS[requesterStar.emotion]}40`,
-          boxShadow: EMOTION_GLOWS[requesterStar.emotion],
-          animation: 'slideUp 0.4s ease',
-          padding: '2rem'
+          width: '90%',
         }}
       >
         <h3 style={{ 
           marginBottom: '1rem',
           fontSize: '1.5rem',
-          fontFamily: 'var(--font-heading)',
-          fontWeight: 600
+          fontWeight: 600,
+          color: '#fff',
         }}>
           Someone wants to connect
         </h3>
@@ -70,7 +103,8 @@ export default function ThreadRequestModal({
         <p style={{ 
           opacity: 0.7, 
           marginBottom: '1.5rem',
-          fontSize: '0.9rem' 
+          fontSize: '0.9rem',
+          color: '#fff',
         }}>
           They've shared their unsent message with you:
         </p>
@@ -81,42 +115,38 @@ export default function ThreadRequestModal({
           alignItems: 'center',
           gap: '0.5rem',
           padding: '0.5rem 1rem',
-          background: `${EMOTION_COLORS[requesterStar.emotion]}20`,
+          background: `${emotionColor}20`,
           borderRadius: '20px',
           marginBottom: '1rem',
-          border: `1px solid ${EMOTION_COLORS[requesterStar.emotion]}40`
+          border: `1px solid ${emotionColor}40`,
         }}>
           <div style={{
             width: '10px',
             height: '10px',
             borderRadius: '50%',
-            background: EMOTION_COLORS[requesterStar.emotion],
-            boxShadow: `0 0 8px ${EMOTION_COLORS[requesterStar.emotion]}`
+            background: emotionColor,
+            boxShadow: `0 0 8px ${emotionColor}`,
           }} />
           <span style={{ 
             textTransform: 'capitalize',
             fontSize: '0.85rem',
-            color: EMOTION_COLORS[requesterStar.emotion]
+            color: emotionColor,
           }}>
             {requesterStar.emotion}
           </span>
         </div>
 
-        {/* Their message */}
-        <p 
-          className={styles.preview}
-          style={{
-            fontSize: '1.2rem',
-            lineHeight: '1.6',
-            marginBottom: '2rem',
-            fontFamily: 'var(--font-hand)',
-            padding: '1rem',
-            background: 'rgba(0,0,0,0.2)',
-            borderRadius: '8px',
-            border: `1px solid ${EMOTION_COLORS[requesterStar.emotion]}20`,
-            color: '#fff'
-          }}
-        >
+        {/* Message */}
+        <p style={{
+          fontSize: '1.2rem',
+          lineHeight: '1.6',
+          marginBottom: '2rem',
+          padding: '1rem',
+          background: 'rgba(0,0,0,0.2)',
+          borderRadius: '8px',
+          border: `1px solid ${emotionColor}20`,
+          color: '#fff',
+        }}>
           "{requesterStar.text}"
         </p>
 
@@ -124,15 +154,22 @@ export default function ThreadRequestModal({
           textAlign: 'center',
           marginBottom: '1.5rem',
           fontSize: '0.9rem',
-          opacity: 0.8 
+          opacity: 0.8,
+          color: '#fff',
         }}>
           Would you like to connect?
         </p>
 
-        <div className={styles.actions}>
+        {/* Buttons */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '1rem',
+        }}>
           <button 
-            className={styles.reject} 
-            onClick={onReject}
+            onClick={() => {
+              console.log("❌ REJECT BUTTON CLICKED!");
+              onReject();
+            }}
             style={{
               flex: 1,
               padding: '1rem',
@@ -141,29 +178,28 @@ export default function ThreadRequestModal({
               borderRadius: '12px',
               color: 'rgba(255,255,255,0.7)',
               cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              fontFamily: 'var(--font-body)',
-              fontSize: '1rem'
+              fontSize: '1rem',
             }}
           >
             Not now
           </button>
+          
           <button 
-            className={styles.accept} 
-            onClick={onAccept}
+            onClick={() => {
+              console.log("✅ ACCEPT BUTTON CLICKED!");
+              onAccept();
+            }}
             style={{
               flex: 1,
               padding: '1rem',
-              background: EMOTION_COLORS[requesterStar.emotion],
+              background: emotionColor,
               border: 'none',
               borderRadius: '12px',
               color: '#0a0e27',
               cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              fontFamily: 'var(--font-heading)',
-              fontWeight: 700,
               fontSize: '1rem',
-              boxShadow: `0 0 15px ${EMOTION_COLORS[requesterStar.emotion]}60`
+              fontWeight: 700,
+              boxShadow: `0 0 15px ${emotionColor}60`,
             }}
           >
             Connect

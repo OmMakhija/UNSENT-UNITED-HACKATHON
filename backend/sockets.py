@@ -21,17 +21,28 @@ def register_socket_handlers(socketio):
     def on_connect():
         ACTIVE_USERS.add(request.sid)
         emit("connected")
+        print(f"✅ User connected: {request.sid}")
+        print(f"📊 Active users: {len(ACTIVE_USERS)}")
 
     @socketio.on("disconnect")
     def on_disconnect():
         sid = request.sid
         ACTIVE_USERS.discard(sid)
+        
+        print(f"❌ User disconnected: {sid}")
+        print(f"📊 Active users: {len(ACTIVE_USERS)}")
 
-        # Remove stars owned by this user
+        # Collect all stars owned by this user
+        disconnected_stars = []
         for star_id, owner_sid in list(STAR_OWNERS.items()):
             if owner_sid == sid:
+                disconnected_stars.append(star_id)
                 del STAR_OWNERS[star_id]
-                emit("star_offline", {"star_id": star_id}, broadcast=True)
+        
+        # Broadcast to all clients that these stars are now offline
+        if disconnected_stars:
+            print(f"🌟 Removing {len(disconnected_stars)} stars from disconnected user")
+            emit("stars_offline", {"star_ids": disconnected_stars}, broadcast=True)
 
         # Cleanup pending requests
         for rid, req in list(PENDING_REQUESTS.items()):
@@ -41,21 +52,41 @@ def register_socket_handlers(socketio):
         # Leave threads
         for thread_id, users in list(ACTIVE_THREADS.items()):
             if sid in users:
-                users.remove(sid)
+                users.discard(sid)
                 leave_room(thread_id, sid=sid)
             if not users:
                 del ACTIVE_THREADS[thread_id]
 
     # -----------------------------
-    # Register star ownership
+    # Register star ownership - UPDATED
     # -----------------------------
     @socketio.on("register_star")
     def register_star(data):
         star_id = data.get("star_id")
         if not star_id:
+            print("❌ register_star: Missing star_id")
             return
 
         STAR_OWNERS[star_id] = request.sid
+        print(f"⭐ Star registered: {star_id[:12]}... -> {request.sid}")
+        print(f"📊 Total active stars: {len(STAR_OWNERS)}")
+        
+        # Get updated list of all active stars
+        active_star_ids = list(STAR_OWNERS.keys())
+        
+        # Broadcast updated list to ALL connected clients
+        emit("active_stars", {"star_ids": active_star_ids}, broadcast=True)
+        print(f"📢 Broadcasted active stars to ALL clients: {len(active_star_ids)} stars")
+
+    # -----------------------------
+    # Get active stars - NEW
+    # -----------------------------
+    @socketio.on("get_active_stars")
+    def get_active_stars():
+        """Send list of currently active star IDs to requesting client"""
+        active_star_ids = list(STAR_OWNERS.keys())
+        emit("active_stars", {"star_ids": active_star_ids})
+        print(f"📋 Sent active stars to {request.sid}: {len(active_star_ids)} stars")
 
     # -----------------------------
     # Request thread - UPDATED
@@ -67,6 +98,7 @@ def register_socket_handlers(socketio):
 
         if not target_star_id or target_star_id not in STAR_OWNERS:
             emit("thread_unavailable")
+            print(f"❌ Thread request failed: Star {target_star_id[:12] if target_star_id else 'None'}... not available")
             return
 
         if not requester_star_id:
@@ -97,11 +129,13 @@ def register_socket_handlers(socketio):
                 .single() \
                 .execute()
             
+            print(f"📤 Thread request: {requester_sid} -> {owner_sid}")
+            
             emit(
                 "thread_request",
                 {
                     "request_id": request_id,
-                    "requester_star": requester_star.data,  # Send full star object
+                    "requester_star": requester_star.data,
                 },
                 to=owner_sid
             )
@@ -126,6 +160,7 @@ def register_socket_handlers(socketio):
         requester_sid = req["requester_sid"]
 
         if not accepted:
+            print(f"❌ Thread declined: {request_id}")
             emit("thread_declined", to=requester_sid)
             return
 
@@ -134,6 +169,8 @@ def register_socket_handlers(socketio):
 
         join_room(thread_id, sid=owner_sid)
         join_room(thread_id, sid=requester_sid)
+
+        print(f"✅ Thread created: {thread_id}")
 
         emit("thread_accepted", {"thread_id": thread_id}, to=owner_sid)
         emit("thread_accepted", {"thread_id": thread_id}, to=requester_sid)
