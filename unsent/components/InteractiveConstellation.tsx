@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Message, EMOTION_COLORS, EMOTION_GLOWS } from "@/data/messages";
-import { Globe, PenTool, BarChart3, Palette, X } from "lucide-react";
+import { PenTool, X } from "lucide-react";
 import styles from "./InteractiveConstellation.module.css";
 
 import ComposeModal from "./ComposeModal";
@@ -35,6 +35,8 @@ export default function InteractiveConstellation() {
   const [activeStar, setActiveStar] = useState<StarMessage | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [hoveredStar, setHoveredStar] = useState<StarMessage | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
   // Client ID (unique per tab)
   const clientId = useRef(getClientId());
@@ -225,13 +227,19 @@ export default function InteractiveConstellation() {
     setActiveStar(null);
   };
 
+  /* ---------- HANDLE STAR HOVER ---------- */
+  const handleStarHover = (star: StarMessage, event: React.MouseEvent) => {
+    setHoveredStar(star);
+    setTooltipPosition({ 
+      x: event.clientX, 
+      y: event.clientY 
+    });
+  };
+
   return (
     <div className={styles.wrapper}>
       {/* NAV */}
       <div className={styles.nav}>
-        <button className={styles.navItem}><Globe size={20} /></button>
-        <button className={styles.navItem}><Palette size={20} /></button>
-        <button className={styles.navItem}><BarChart3 size={20} /></button>
         <button
           className={styles.navItemPrimary}
           onClick={() => setComposeOpen(true)}
@@ -252,11 +260,93 @@ export default function InteractiveConstellation() {
               "--star-color": EMOTION_COLORS[s.emotion],
             } as React.CSSProperties}
             onClick={() => setActiveStar(s)}
+            onMouseEnter={(e) => handleStarHover(s, e)}
+            onMouseMove={(e) => {
+              if (hoveredStar?.id === s.id) {
+                setTooltipPosition({ x: e.clientX, y: e.clientY });
+              }
+            }}
+            onMouseLeave={() => setHoveredStar(null)}
           >
             <div className={styles.star} />
           </button>
         ))}
       </div>
+
+      {/* HOVER TOOLTIP */}
+      {hoveredStar && (
+        <div 
+          style={{
+            position: 'fixed',
+            left: tooltipPosition.x + 20,
+            top: tooltipPosition.y - 20,
+            transform: 'translateY(-50%)',
+            background: `linear-gradient(135deg, rgba(20,20,30,0.98) 0%, ${EMOTION_COLORS[hoveredStar.emotion]}15 100%)`,
+            border: `1px solid ${EMOTION_COLORS[hoveredStar.emotion]}50`,
+            borderRadius: '12px',
+            padding: '1rem 1.25rem',
+            maxWidth: '280px',
+            pointerEvents: 'none',
+            zIndex: 10000,
+            boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 20px ${EMOTION_COLORS[hoveredStar.emotion]}30`,
+            backdropFilter: 'blur(10px)',
+            animation: 'fadeIn 0.2s ease'
+          }}
+        >
+          {/* Emotion indicator */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '0.75rem'
+          }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: EMOTION_COLORS[hoveredStar.emotion],
+              boxShadow: `0 0 8px ${EMOTION_COLORS[hoveredStar.emotion]}`
+            }} />
+            <span style={{
+              fontSize: '0.75rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: EMOTION_COLORS[hoveredStar.emotion],
+              fontWeight: 600
+            }}>
+              {hoveredStar.emotion}
+            </span>
+          </div>
+
+          {/* Message preview */}
+          <p style={{
+            fontSize: '0.9rem',
+            lineHeight: '1.5',
+            color: 'rgba(255,255,255,0.9)',
+            fontFamily: 'var(--font-hand)',
+            margin: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical'
+          }}>
+            "{hoveredStar.text}"
+          </p>
+
+          {/* Click hint */}
+          <div style={{
+            marginTop: '0.75rem',
+            paddingTop: '0.75rem',
+            borderTop: `1px solid ${EMOTION_COLORS[hoveredStar.emotion]}20`,
+            fontSize: '0.7rem',
+            color: 'rgba(255,255,255,0.5)',
+            textAlign: 'center'
+          }}>
+            Click to connect
+          </div>
+        </div>
+      )}
 
       {/* STAR CARD */}
       {activeStar && (

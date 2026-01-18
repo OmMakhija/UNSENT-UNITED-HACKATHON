@@ -215,6 +215,26 @@ def register_socket_handlers(socketio):
             print(f"   Active threads: {list(ACTIVE_THREADS.keys())}")
 
     # -----------------------------
+    # Clear side relay - NEW
+    # -----------------------------
+    @socketio.on("clear_side")
+    def clear_side(data):
+        thread_id = data.get("thread_id")
+        side = data.get("side")
+        
+        print(f"🗑️ CLEAR_SIDE EVENT RECEIVED from {request.sid}")
+        print(f"   Thread ID: {thread_id}")
+        print(f"   Side: {side}")
+        
+        if thread_id in ACTIVE_THREADS:
+            print(f"✅ Relaying clear_side to thread room: {thread_id}")
+            emit("clear_side", data, room=thread_id, include_self=False)
+            print(f"✅ Clear_side event relayed")
+        else:
+            print(f"❌ Thread {thread_id} NOT in ACTIVE_THREADS!")
+            print(f"   Active threads: {list(ACTIVE_THREADS.keys())}")
+
+    # -----------------------------
     # Chat relay - NEW
     # -----------------------------
     @socketio.on("chat_message")
@@ -287,6 +307,7 @@ def register_socket_handlers(socketio):
     print("   - respond_thread")
     print("   - join_thread")
     print("   - draw")
+    print("   - clear_side 🆕")
     print("   - chat_message  🆕")
     print("   - message (legacy)")
     print("   - leave_thread")

@@ -26,7 +26,7 @@ export default function KnotSession({
   onClose,
   userRole,
 }: KnotSessionProps) {
-  const [timeLeft, setTimeLeft] = useState(263);
+  const [timeLeft, setTimeLeft] = useState(1800); // 30 minutes
   const [sessionState, setSessionState] = useState<
     "active" | "merging" | "finished"
   >("active");

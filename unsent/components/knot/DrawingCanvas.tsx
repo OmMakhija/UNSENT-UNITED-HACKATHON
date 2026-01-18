@@ -35,9 +35,33 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       clear: () => {
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext("2d");
-        if (canvas && ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const parent = canvas?.parentElement;
+        if (!canvas || !ctx || !parent) return;
+
+        const rect = parent.getBoundingClientRect();
+        const midpoint = rect.width / 2;
+
+        // Clear only my side
+        if (side === "left") {
+          ctx.clearRect(0, 0, midpoint, rect.height);
+        } else {
+          ctx.clearRect(midpoint, 0, rect.width, rect.height);
         }
+
+        // Redraw the dividing line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(midpoint, 0);
+        ctx.lineTo(midpoint, rect.height);
+        ctx.stroke();
+
+        // Emit clear event to other user
+        socket.emit("clear_side", {
+          thread_id: threadId,
+          side: side,
+        });
+        console.log(`🗑️ Cleared ${side} side and emitted to socket`);
       },
       getCanvas: () => canvasRef.current,
     }));
@@ -124,13 +148,49 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         );
       };
 
+      const handleClearSide = (data: { thread_id: string; side: "left" | "right" }) => {
+        console.log("📥 RECEIVED CLEAR_SIDE EVENT:", data);
+        
+        if (data.thread_id !== threadId) {
+          console.log("❌ Thread ID mismatch, ignoring");
+          return;
+        }
+
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext("2d");
+        const parent = canvas?.parentElement;
+        if (!canvas || !ctx || !parent) return;
+
+        const rect = parent.getBoundingClientRect();
+        const midpoint = rect.width / 2;
+
+        // Clear the specified side
+        if (data.side === "left") {
+          ctx.clearRect(0, 0, midpoint, rect.height);
+        } else {
+          ctx.clearRect(midpoint, 0, rect.width, rect.height);
+        }
+
+        // Redraw the dividing line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(midpoint, 0);
+        ctx.lineTo(midpoint, rect.height);
+        ctx.stroke();
+
+        console.log(`✅ Cleared ${data.side} side on remote command`);
+      };
+
       socket.on("draw", handleRemoteDraw);
+      socket.on("clear_side", handleClearSide);
       
       return () => {
-        console.log("🔇 Removing draw listener");
+        console.log("🔇 Removing draw and clear_side listeners");
         socket.off("draw", handleRemoteDraw);
+        socket.off("clear_side", handleClearSide);
       };
-    }, [threadId]);
+    }, [threadId, side]);
 
     /* ---------- POINTER UTILS ---------- */
     const getPos = (
