@@ -11,21 +11,18 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from sentiment import detect_emotion
-from sockets import register_socket_handlers
 from thread_matcher import assign_thread
-
+from sockets import register_socket_handlers
 from supabase_client import supabase
-
 
 # ------------------------
 # App setup
 # ------------------------
 app = Flask(__name__)
 
-# ✅ Allow all origins (safe for hackathon)
+# Allow all origins (safe for hackathon / demo)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ✅ Socket.IO (CORS FIXED)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -33,10 +30,9 @@ socketio = SocketIO(
     ping_timeout=60,
     ping_interval=25,
     logger=True,
-    engineio_logger=True
+    engineio_logger=True,
 )
 
-# Register socket handlers
 register_socket_handlers(socketio)
 
 print("=" * 60)
@@ -44,14 +40,12 @@ print("🚀 UNSENT Backend Server")
 print("✅ Socket handlers registered")
 print("=" * 60)
 
-
 # ------------------------
 # Health check
 # ------------------------
-@app.route("/")
+@app.route("/", methods=["GET"])
 def health():
-    return "UNSENT backend alive"
-
+    return "UNSENT backend alive", 200
 
 # ------------------------
 # Submit unsent message
@@ -67,11 +61,10 @@ def submit():
 
         emotion, score = detect_emotion(text)
         thread_id = assign_thread(text, emotion)
-
         message_id = str(uuid.uuid4())
 
-        # Insert message
-        supabase.insert("unsent_messages", {
+        # Insert unsent message
+        supabase.table("unsent_messages").insert({
             "id": message_id,
             "text": text,
             "emotion": emotion,
@@ -81,25 +74,24 @@ def submit():
             "lat": random.uniform(-60, 60),
             "lng": random.uniform(-180, 180),
             "thread_id": thread_id,
-        })
+        }).execute()
 
-        # Link to thread
-        supabase.insert("thread_messages", {
+        # Link message to thread
+        supabase.table("thread_messages").insert({
             "id": str(uuid.uuid4()),
             "thread_id": thread_id,
             "message_id": message_id,
-        })
+        }).execute()
 
         return jsonify({
             "success": True,
             "id": message_id,
             "thread_id": thread_id,
-        })
+        }), 200
 
     except Exception as e:
         print("❌ /submit error:", repr(e))
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"error": "Internal server error"}), 500
 
 # ------------------------
 # Fetch stars
@@ -107,12 +99,11 @@ def submit():
 @app.route("/stars", methods=["GET"])
 def get_stars():
     try:
-        data = supabase.select("unsent_messages")
-        return jsonify(data)
+        res = supabase.table("unsent_messages").select("*").execute()
+        return jsonify(res.data), 200
     except Exception as e:
         print("❌ /stars error:", repr(e))
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"error": "Internal server error"}), 500
 
 # ------------------------
 # Get thread for a star
@@ -120,14 +111,23 @@ def get_stars():
 @app.route("/thread/<star_id>", methods=["GET"])
 def get_thread(star_id):
     try:
-        rows = supabase.select("unsent_messages?id=eq." + star_id)
-        if not rows:
+        res = (
+            supabase
+            .table("unsent_messages")
+            .select("thread_id")
+            .eq("id", star_id)
+            .single()
+            .execute()
+        )
+
+        if not res.data:
             return jsonify({"error": "Star not found"}), 404
-        return jsonify({"thread_id": rows[0]["thread_id"]})
+
+        return jsonify({"thread_id": res.data["thread_id"]}), 200
+
     except Exception as e:
         print("❌ /thread error:", repr(e))
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"error": "Internal server error"}), 500
 
 # ------------------------
 # Cleanup old stars
@@ -136,12 +136,17 @@ def get_thread(star_id):
 def cleanup_old_stars():
     try:
         cutoff = datetime.utcnow() - timedelta(hours=24)
-        supabase.delete_older_than("unsent_messages", cutoff.isoformat())
-        return jsonify({"ok": True})
+
+        supabase.table("unsent_messages") \
+            .delete() \
+            .lt("created_at", cutoff.isoformat()) \
+            .execute()
+
+        return jsonify({"ok": True}), 200
+
     except Exception as e:
         print("❌ /cleanup error:", repr(e))
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"error": "Internal server error"}), 500
 
 # ------------------------
 # Run server
@@ -157,5 +162,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         debug=False,
-        use_reloader=False
+        use_reloader=False,
     )
