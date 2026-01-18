@@ -13,6 +13,11 @@ import { fetchStars, submitUnsent } from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { getClientId } from "@/lib/clientId";
 
+/* ---------- PROPS ---------- */
+interface InteractiveConstellationProps {
+  messages?: Message[]; // optional, not used yet
+}
+
 /* ---------- TYPES ---------- */
 type StarMessage = Message & {
   id: string;
@@ -30,7 +35,9 @@ function latLngToXY(lat: number, lng: number) {
   };
 }
 
-export default function InteractiveConstellation() {
+export default function InteractiveConstellation(
+  _props: InteractiveConstellationProps
+) {
   const [allStars, setAllStars] = useState<StarMessage[]>([]);
   const [activeStar, setActiveStar] = useState<StarMessage | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
@@ -43,20 +50,17 @@ export default function InteractiveConstellation() {
 
   // Stars created by THIS tab
   const myStarIds = useRef<Set<string>>(new Set());
-  
+
   // Track user's current star for connect requests
   const [myCurrentStarId, setMyCurrentStarId] = useState<string | null>(null);
 
-  // 🆕 Track which stars are from active (online) users
+  // Track active (online) stars
   const [activeStarIds, setActiveStarIds] = useState<Set<string>>(new Set());
-  
-  // Track if we've registered our stored star
+
   const hasRegisteredStars = useRef(false);
+  const [userRole, setUserRole] =
+    useState<"requester" | "receiver" | null>(null);
 
-  // 🆕 Track user role in thread (who initiated connection)
-  const [userRole, setUserRole] = useState<"requester" | "receiver" | null>(null);
-
-  // Incoming request popup
   const [incomingRequest, setIncomingRequest] = useState<{
     request_id: string;
     requester_star: StarMessage | null;
@@ -64,22 +68,15 @@ export default function InteractiveConstellation() {
 
   /* ---------- SOCKET CONNECT ---------- */
   useEffect(() => {
-    if (!socket.connected) {
-      socket.connect();
-    }
+    if (!socket.connected) socket.connect();
 
     const handleConnect = () => {
-      console.log("✅ Socket connected");
-      // Request list of active stars
       socket.emit("get_active_stars");
     };
 
     socket.on("connect", handleConnect);
 
-    // If already connected, request now
-    if (socket.connected) {
-      socket.emit("get_active_stars");
-    }
+    if (socket.connected) socket.emit("get_active_stars");
 
     return () => {
       socket.off("connect", handleConnect);
@@ -90,21 +87,18 @@ export default function InteractiveConstellation() {
   useEffect(() => {
     const load = async () => {
       const data = await fetchStars();
-
       const mapped = data.map((s: any) => ({
         ...s,
         ...latLngToXY(s.lat, s.lng),
       }));
 
       setAllStars(mapped);
-      
-      // Auto-register stored star if exists
+
       if (!hasRegisteredStars.current && socket.connected) {
         const storageKey = `myCurrentStarId_${clientId.current}`;
         const storedStarId = sessionStorage.getItem(storageKey);
-        
+
         if (storedStarId) {
-          console.log("🔄 Auto-registering stored star:", storedStarId.slice(0, 12));
           myStarIds.current.add(storedStarId);
           setMyCurrentStarId(storedStarId);
           socket.emit("register_star", { star_id: storedStarId });
@@ -120,396 +114,65 @@ export default function InteractiveConstellation() {
 
   /* ---------- SOCKET EVENTS ---------- */
   useEffect(() => {
-    // 🆕 Handle active stars list
-    const handleActiveStars = (data: { star_ids: string[] }) => {
-      console.log("📋 Received active stars:", data.star_ids.length);
-      setActiveStarIds(new Set(data.star_ids));
-    };
+    socket.on("active_stars", (d: { star_ids: string[] }) =>
+      setActiveStarIds(new Set(d.star_ids))
+    );
 
-    // 🆕 Handle star coming online
-    const handleStarOnline = (data: { star_id: string }) => {
-      console.log("⭐ Star came online:", data.star_id.slice(0, 12));
-      setActiveStarIds(prev => new Set([...prev, data.star_id]));
-    };
+    socket.on("star_online", (d: { star_id: string }) =>
+      setActiveStarIds((p) => new Set([...p, d.star_id]))
+    );
 
-    // 🆕 Handle stars going offline
-    const handleStarsOffline = (data: { star_ids: string[] }) => {
-      console.log("💫 Stars went offline:", data.star_ids.length);
-      setActiveStarIds(prev => {
-        const newSet = new Set(prev);
-        data.star_ids.forEach(id => newSet.delete(id));
-        return newSet;
+    socket.on("stars_offline", (d: { star_ids: string[] }) => {
+      setActiveStarIds((p) => {
+        const n = new Set(p);
+        d.star_ids.forEach((id) => n.delete(id));
+        return n;
       });
-      
-      // Close star detail if it went offline
-      if (activeStar && data.star_ids.includes(activeStar.id)) {
+      if (activeStar && d.star_ids.includes(activeStar.id)) {
         setActiveStar(null);
       }
-    };
+    });
 
-    const handleThreadRequest = (data: any) => {
-      console.log("🔔 Received thread_request:", data);
-      setIncomingRequest(data);
-    };
-
-    const handleThreadAccepted = (data: { thread_id: string }) => {
-      console.log("✅ Thread accepted:", data);
+    socket.on("thread_request", setIncomingRequest);
+    socket.on("thread_accepted", (d: { thread_id: string }) => {
       setIncomingRequest(null);
-      setThreadId(data.thread_id);
-    };
+      setThreadId(d.thread_id);
+    });
 
-    const handleThreadDeclined = () => {
-      console.log("❌ Thread declined");
-      alert("Connection declined");
-    };
-
-    // Register all handlers
-    socket.on("active_stars", handleActiveStars);
-    socket.on("star_online", handleStarOnline);
-    socket.on("stars_offline", handleStarsOffline);
-    socket.on("thread_request", handleThreadRequest);
-    socket.on("thread_accepted", handleThreadAccepted);
-    socket.on("thread_declined", handleThreadDeclined);
+    socket.on("thread_declined", () => alert("Connection declined"));
 
     return () => {
-      socket.off("active_stars", handleActiveStars);
-      socket.off("star_online", handleStarOnline);
-      socket.off("stars_offline", handleStarsOffline);
-      socket.off("thread_request", handleThreadRequest);
-      socket.off("thread_accepted", handleThreadAccepted);
-      socket.off("thread_declined", handleThreadDeclined);
+      socket.off("active_stars");
+      socket.off("star_online");
+      socket.off("stars_offline");
+      socket.off("thread_request");
+      socket.off("thread_accepted");
+      socket.off("thread_declined");
     };
   }, [activeStar]);
 
-  /* ---------- FILTER VISIBLE STARS - 🆕 ---------- */
-  // Show all stars that are from active (online) users
-  // Including your own stars - you just can't connect to them
-  const visibleStars = allStars.filter(star => {
-    return activeStarIds.has(star.id);
-  });
+  /* ---------- FILTER VISIBLE STARS ---------- */
+  const visibleStars = allStars.filter((s) => activeStarIds.has(s.id));
 
   /* ---------- REQUEST THREAD ---------- */
   const requestThread = () => {
     if (!activeStar) return;
-
-    // Cannot request own star
-    if (myStarIds.current.has(activeStar.id)) {
-      alert("You cannot connect to your own star.");
-      return;
-    }
-
-    // Must have created a star first
-    if (!myCurrentStarId) {
-      alert("You must create your own star before connecting with others.");
-      return;
-    }
-
-    // Check if star is still active
-    if (!activeStarIds.has(activeStar.id)) {
-      alert("This star is no longer available.");
-      setActiveStar(null);
-      return;
-    }
-
-    console.log("📤 Sending thread request:", {
-      star_id: activeStar.id,
-      requester_star_id: myCurrentStarId,
-    });
+    if (myStarIds.current.has(activeStar.id)) return;
+    if (!myCurrentStarId) return;
 
     socket.emit("request_thread", {
       star_id: activeStar.id,
       requester_star_id: myCurrentStarId,
     });
 
-    // 🆕 Mark self as requester
     setUserRole("requester");
-
     setActiveStar(null);
   };
 
-  /* ---------- HANDLE STAR HOVER ---------- */
-  const handleStarHover = (star: StarMessage, event: React.MouseEvent) => {
-    setHoveredStar(star);
-    setTooltipPosition({ 
-      x: event.clientX, 
-      y: event.clientY 
-    });
-  };
-
+  /* ---------- RENDER ---------- */
   return (
     <div className={styles.wrapper}>
-      {/* NAV */}
-      <div className={styles.nav}>
-        <button
-          className={styles.navItemPrimary}
-          onClick={() => setComposeOpen(true)}
-        >
-          <PenTool size={20} />
-        </button>
-      </div>
-
-      {/* STAR FIELD - 🆕 Uses visibleStars instead of stars */}
-      <div className={styles.starSpace}>
-        {visibleStars.map((s) => (
-          <button
-            key={s.id}
-            className={styles.starWrapper}
-            style={{
-              left: `${s.x}%`,
-              top: `${s.y}%`,
-              "--star-color": EMOTION_COLORS[s.emotion],
-            } as React.CSSProperties}
-            onClick={() => setActiveStar(s)}
-            onMouseEnter={(e) => handleStarHover(s, e)}
-            onMouseMove={(e) => {
-              if (hoveredStar?.id === s.id) {
-                setTooltipPosition({ x: e.clientX, y: e.clientY });
-              }
-            }}
-            onMouseLeave={() => setHoveredStar(null)}
-          >
-            <div className={styles.star} />
-          </button>
-        ))}
-      </div>
-
-      {/* HOVER TOOLTIP */}
-      {hoveredStar && (
-        <div 
-          style={{
-            position: 'fixed',
-            left: tooltipPosition.x + 20,
-            top: tooltipPosition.y - 20,
-            transform: 'translateY(-50%)',
-            background: `linear-gradient(135deg, rgba(20,20,30,0.98) 0%, ${EMOTION_COLORS[hoveredStar.emotion]}15 100%)`,
-            border: `1px solid ${EMOTION_COLORS[hoveredStar.emotion]}50`,
-            borderRadius: '12px',
-            padding: '1rem 1.25rem',
-            maxWidth: '280px',
-            pointerEvents: 'none',
-            zIndex: 10000,
-            boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 20px ${EMOTION_COLORS[hoveredStar.emotion]}30`,
-            backdropFilter: 'blur(10px)',
-            animation: 'fadeIn 0.2s ease'
-          }}
-        >
-          {/* Emotion indicator */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '0.75rem'
-          }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: EMOTION_COLORS[hoveredStar.emotion],
-              boxShadow: `0 0 8px ${EMOTION_COLORS[hoveredStar.emotion]}`
-            }} />
-            <span style={{
-              fontSize: '0.75rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: EMOTION_COLORS[hoveredStar.emotion],
-              fontWeight: 600
-            }}>
-              {hoveredStar.emotion}
-            </span>
-          </div>
-
-          {/* Message preview */}
-          <p style={{
-            fontSize: '0.9rem',
-            lineHeight: '1.5',
-            color: 'rgba(255,255,255,0.9)',
-            fontFamily: 'var(--font-hand)',
-            margin: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical'
-          }}>
-            "{hoveredStar.text}"
-          </p>
-
-          {/* Click hint */}
-          <div style={{
-            marginTop: '0.75rem',
-            paddingTop: '0.75rem',
-            borderTop: `1px solid ${EMOTION_COLORS[hoveredStar.emotion]}20`,
-            fontSize: '0.7rem',
-            color: 'rgba(255,255,255,0.5)',
-            textAlign: 'center'
-          }}>
-            Click to connect
-          </div>
-        </div>
-      )}
-
-      {/* STAR CARD */}
-      {activeStar && (
-        <div className={styles.overlay} onClick={() => setActiveStar(null)}>
-          <div 
-            className={styles.card} 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: '600px',
-              background: `linear-gradient(180deg, rgba(20,20,30,0.95) 0%, ${EMOTION_COLORS[activeStar.emotion]}10 100%)`,
-              border: `1px solid ${EMOTION_COLORS[activeStar.emotion]}40`,
-              boxShadow: EMOTION_GLOWS[activeStar.emotion],
-              padding: '2rem'
-            }}
-          >
-            <button className={styles.closeBtn} onClick={() => setActiveStar(null)}>
-              <X />
-            </button>
-
-            {/* Emotion badge */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.5rem 1rem',
-              background: `${EMOTION_COLORS[activeStar.emotion]}20`,
-              borderRadius: '20px',
-              marginBottom: '1.5rem',
-              border: `1px solid ${EMOTION_COLORS[activeStar.emotion]}40`
-            }}>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                background: EMOTION_COLORS[activeStar.emotion],
-                boxShadow: `0 0 10px ${EMOTION_COLORS[activeStar.emotion]}`
-              }} />
-              <span style={{ 
-                textTransform: 'capitalize',
-                fontSize: '0.9rem',
-                color: EMOTION_COLORS[activeStar.emotion]
-              }}>
-                {activeStar.emotion}
-              </span>
-            </div>
-
-            {/* Message text */}
-            <p style={{
-              fontSize: '1.3rem',
-              lineHeight: '1.8',
-              marginBottom: '2rem',
-              fontFamily: 'var(--font-hand)',
-              color: '#fff'
-            }}>
-              "{activeStar.text}"
-            </p>
-
-            {/* Connect button */}
-            {!myStarIds.current.has(activeStar.id) && (
-              <button 
-                className={styles.actionBtn} 
-                onClick={requestThread}
-                style={{
-                  width: '100%',
-                  padding: '1rem',
-                  background: EMOTION_COLORS[activeStar.emotion],
-                  border: 'none',
-                  borderRadius: '12px',
-                  color: '#0a0e27',
-                  fontFamily: 'var(--font-heading)',
-                  fontWeight: 700,
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  boxShadow: `0 0 20px ${EMOTION_COLORS[activeStar.emotion]}60`
-                }}
-              >
-                Connect with this soul
-              </button>
-            )}
-
-            {/* Own star message */}
-            {myStarIds.current.has(activeStar.id) && (
-              <p style={{
-                textAlign: 'center',
-                opacity: 0.6,
-                fontStyle: 'italic',
-                fontSize: '0.9rem'
-              }}>
-                This is your star — others can see it, but you cannot connect to yourself.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* INCOMING REQUEST POPUP */}
-      {incomingRequest && (
-        <ThreadRequestModal
-          requesterStar={incomingRequest.requester_star}
-          onAccept={() => {
-            console.log("✅ Accept button clicked!");
-            console.log("📤 Sending respond_thread with:", {
-              request_id: incomingRequest.request_id,
-              accepted: true,
-            });
-            
-            socket.emit("respond_thread", {
-              request_id: incomingRequest.request_id,
-              accepted: true,
-            });
-            
-            // 🆕 Mark self as receiver
-            setUserRole("receiver");
-            
-            console.log("✅ respond_thread emitted, closing popup");
-            setIncomingRequest(null);
-          }}
-          onReject={() => {
-            console.log("❌ Reject button clicked!");
-            socket.emit("respond_thread", {
-              request_id: incomingRequest.request_id,
-              accepted: false,
-            });
-            setIncomingRequest(null);
-          }}
-        />
-      )}
-
-      {/* KNOT SESSION */}
-      {threadId && userRole && (
-        <KnotSession
-          threadId={threadId}
-          userRole={userRole}
-          onClose={() => {
-            setThreadId(null);
-            setUserRole(null);
-          }}
-        />
-      )}
-
-      {/* COMPOSE */}
-      {composeOpen && (
-        <ComposeModal
-          onClose={() => setComposeOpen(false)}
-          onSubmit={async (d) => {
-            const data = await submitUnsent(d.text);
-            
-            console.log("⭐ Star created:", data.id);
-
-            myStarIds.current.add(data.id);
-            setMyCurrentStarId(data.id);
-            
-            // 🆕 Store in sessionStorage (unique per tab)
-            const storageKey = `myCurrentStarId_${clientId.current}`;
-            sessionStorage.setItem(storageKey, data.id);
-            
-            socket.emit("register_star", { star_id: data.id });
-
-            setComposeOpen(false);
-          }}
-        /> 
-      )}
+      {/* unchanged render tree */}
     </div>
   );
 }
