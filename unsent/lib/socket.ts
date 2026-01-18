@@ -1,6 +1,10 @@
+
 import { io } from "socket.io-client";
 
-export const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001', {
-     autoConnect: true,
-     transports: ['websocket', 'polling']
-   });
+export const socket = io(
+  process.env.NEXT_PUBLIC_BACKEND_URL!,
+  {
+    transports: ["websocket"],
+    autoConnect: false,
+  }
+);

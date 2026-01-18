@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5001";
+const API_URL = "process.env.NEXT_PUBLIC_BACKEND_URL!;";
 
 export async function submitUnsent(text: string) {
   const res = await fetch(`${API_URL}/submit`, {
@@ -14,8 +14,8 @@ export async function submitUnsent(text: string) {
   return res.json();
 }
 
-export async function fetchStars() {
+
+export const fetchStars = async () => {
   const res = await fetch(`${API_URL}/stars`);
-  if (!res.ok) throw new Error("Failed to fetch stars");
   return res.json();
-}
+};
