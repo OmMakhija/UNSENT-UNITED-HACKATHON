@@ -1,0 +1,9 @@
+flask
+flask-cors
+python-dotenv
+textblob
+deep-translator
+supabase
+flask-socketio
+eventlet
+scikit-learn
