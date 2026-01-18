@@ -20,28 +20,18 @@ from thread_matcher import assign_thread
 # ------------------------
 app = Flask(__name__)
 
-# CORS configuration - update with your Vercel domain after deployment
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:3000",  # Local development
-            "https://*.vercel.app",   # All Vercel preview deployments
-            # Add your production domain here after deployment
-            # "https://your-domain.com"
-        ]
-    }
-})
+# ✅ Flask CORS (REST endpoints)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
+# ✅ Socket.IO CORS (CRITICAL FIX)
 socketio = SocketIO(
     app,
-    cors_allowed_origins=[
-        "http://localhost:3000",
-        "https://*.vercel.app",
-        # Add your production domain here
-    ],
+    cors_allowed_origins="*",   # ← THIS FIXES EVERYTHING
     async_mode="eventlet",
     ping_timeout=60,
-    ping_interval=25
+    ping_interval=25,
+    logger=True,
+    engineio_logger=True
 )
 
 # Register socket event handlers
@@ -100,24 +90,17 @@ def submit():
         "thread_id": thread_id,
     })
 
-
 # ------------------------
-# Fetch stars (ALL stars — filtering happens client-side)
+# Fetch stars
 # ------------------------
 @app.route("/stars", methods=["GET"])
 def get_stars():
     try:
-        res = (
-            supabase
-            .table("unsent_messages")
-            .select("*")
-            .execute()
-        )
+        res = supabase.table("unsent_messages").select("*").execute()
         return jsonify(res.data)
     except Exception as e:
         print("❌ /stars error:", e)
         return jsonify({"error": str(e)}), 500
-
 
 # ------------------------
 # Get thread for a star
@@ -132,7 +115,6 @@ def get_thread(star_id):
         .single()
         .execute()
     )
-
     return jsonify({"thread_id": res.data["thread_id"]})
 
 # ------------------------
@@ -153,16 +135,15 @@ def cleanup_old_stars():
 # Run server
 # ------------------------
 if __name__ == "__main__":
-    # Use PORT from environment variable (Render provides this)
     port = int(os.environ.get("PORT", 5001))
-    
+
     print(f"🌟 Starting server on port {port}")
     print("=" * 60)
-    
+
     socketio.run(
         app,
         host="0.0.0.0",
         port=port,
-        debug=False,  # Set to False for production
+        debug=False,
         use_reloader=False
     )
