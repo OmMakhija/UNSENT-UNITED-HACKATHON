@@ -1,6 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
 
+import os
 import uuid
 import random
 from datetime import datetime, timedelta
@@ -18,11 +19,26 @@ from thread_matcher import assign_thread
 # App setup
 # ------------------------
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+
+# CORS configuration - update with your Vercel domain after deployment
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",  # Local development
+            "https://*.vercel.app",   # All Vercel preview deployments
+            # Add your production domain here after deployment
+            # "https://your-domain.com"
+        ]
+    }
+})
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://*.vercel.app",
+        # Add your production domain here
+    ],
     async_mode="eventlet",
     ping_timeout=60,
     ping_interval=25
@@ -137,12 +153,16 @@ def cleanup_old_stars():
 # Run server
 # ------------------------
 if __name__ == "__main__":
-    print("🌟 Starting server on http://localhost:5001")
+    # Use PORT from environment variable (Render provides this)
+    port = int(os.environ.get("PORT", 5001))
+    
+    print(f"🌟 Starting server on port {port}")
     print("=" * 60)
+    
     socketio.run(
         app,
         host="0.0.0.0",
-        port=5001,  # Changed from 5000 to 5001
-        debug=True,  # Changed from False to True for development
-        use_reloader=False  # Prevent double initialization with eventlet
+        port=port,
+        debug=False,  # Set to False for production
+        use_reloader=False
     )
