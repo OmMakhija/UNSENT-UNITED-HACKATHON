@@ -3,6 +3,9 @@ flask-cors==4.0.0
 flask-socketio==5.3.5
 python-socketio==5.10.0
 eventlet==0.33.3
+gevent==23.9.1
+gevent-websocket==0.10.1
 supabase==2.3.0
 transformers==4.36.0
 torch==2.1.0
+python-dotenv==1.0.0
