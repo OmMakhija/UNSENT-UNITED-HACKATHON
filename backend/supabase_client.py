@@ -1,6 +1,8 @@
 import requests
 from config import SUPABASE_URL, SUPABASE_KEY
 
+print("🔎 SUPABASE_URL =", SUPABASE_URL[:60])
+
 HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -8,32 +10,26 @@ HEADERS = {
 }
 
 class SupabaseREST:
-    def select(self, table_query):
-        res = requests.get(
-            f"{SUPABASE_URL}/rest/v1/{table_query}",
-            headers=HEADERS,
-            timeout=10
-        )
+    def select(self, table):
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        print("➡️ SELECT URL:", url)
+
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        print("⬅️ STATUS:", res.status_code)
+        print("⬅️ BODY:", res.text[:300])
+
         res.raise_for_status()
         return res.json()
 
     def insert(self, table, payload):
-        res = requests.post(
-            f"{SUPABASE_URL}/rest/v1/{table}",
-            headers=HEADERS,
-            json=payload,
-            timeout=10
-        )
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        print("➡️ INSERT URL:", url)
+
+        res = requests.post(url, headers=HEADERS, json=payload, timeout=10)
+        print("⬅️ STATUS:", res.status_code)
+        print("⬅️ BODY:", res.text[:300])
+
         res.raise_for_status()
         return res.json()
-
-    def delete_older_than(self, table, iso_time):
-        res = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/{table}?created_at=lt.{iso_time}",
-            headers=HEADERS,
-            timeout=10
-        )
-        res.raise_for_status()
-        return True
 
 supabase = SupabaseREST()
