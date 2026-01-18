@@ -9,29 +9,68 @@ interface Message {
     text: string;
 }
 
-export default function KnotChat({ isActive }: { isActive: boolean }) {
+interface KnotChatProps {
+    isActive: boolean;
+    threadId: string;
+    socket: any; // Your existing socket instance from parent component
+}
+
+export default function KnotChat({ isActive, threadId, socket }: KnotChatProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const endRef = useRef<HTMLDivElement>(null);
 
-    // Simulated "Them" messages
     useEffect(() => {
-        if (!isActive) return;
+        if (!isActive || !socket || !threadId) return;
 
-        const sequence = [
-            { delay: 3000, text: "I know what you mean..." },
-            { delay: 15000, text: "It's heavy, isn't it?" },
-            { delay: 45000, text: "I'm glad we're drawing this together." }
-        ];
+        console.log('🎯 Setting up chat listeners');
+        console.log('   Socket ID:', socket.id);
+        console.log('   Thread ID:', threadId);
 
-        const timeouts = sequence.map(item =>
-            setTimeout(() => {
-                setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'them', text: item.text }]);
-            }, item.delay)
-        );
+        // Listen for chat history when joining
+        const handleChatHistory = (data: { messages: Array<{ text: string; sender_sid: string; timestamp: number }> }) => {
+            const formattedMessages = data.messages.map(msg => ({
+                id: msg.timestamp.toString(),
+                sender: (msg.sender_sid === socket.id ? 'you' : 'them') as 'you' | 'them',
+                text: msg.text
+            }));
+            setMessages(formattedMessages);
+            console.log('📜 Loaded chat history:', formattedMessages.length, 'messages');
+        };
 
-        return () => timeouts.forEach(clearTimeout);
-    }, [isActive]);
+        // Listen for incoming chat messages
+        const handleChatMessage = (data: { text: string; sender_sid: string }) => {
+            console.log('💬 RAW chat_message event received:', data);
+            console.log('   My socket.id:', socket.id);
+            console.log('   Message sender_sid:', data.sender_sid);
+            
+            const isFromYou = data.sender_sid === socket.id;
+            console.log('   Is from you?', isFromYou);
+            
+            const newMessage: Message = {
+                id: Date.now().toString() + Math.random(),
+                sender: (isFromYou ? 'you' : 'them') as 'you' | 'them',
+                text: data.text
+            };
+            
+            console.log('   Adding message:', newMessage);
+            
+            setMessages(prev => {
+                console.log('   Previous messages count:', prev.length);
+                const updated = [...prev, newMessage];
+                console.log('   Updated messages count:', updated.length);
+                return updated;
+            });
+        };
+
+        socket.on('chat_history', handleChatHistory);
+        socket.on('chat_message', handleChatMessage);
+
+        return () => {
+            socket.off('chat_history', handleChatHistory);
+            socket.off('chat_message', handleChatMessage);
+        };
+    }, [isActive, socket, threadId]);
 
     // Auto-scroll
     useEffect(() => {
@@ -40,15 +79,45 @@ export default function KnotChat({ isActive }: { isActive: boolean }) {
 
     const send = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim()) return;
-        setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'you', text: input }]);
+        
+        console.log('🔍 Send clicked:', { input, socket: !!socket, threadId });
+        
+        if (!input.trim()) {
+            console.log('❌ Empty input');
+            return;
+        }
+        
+        if (!socket) {
+            console.log('❌ No socket');
+            return;
+        }
+        
+        if (!threadId) {
+            console.log('❌ No threadId');
+            return;
+        }
+
+        const messageText = input;
+
+        // Send to server - server will broadcast to ALL users including sender
+        socket.emit('chat_message', {
+            thread_id: threadId,
+            text: messageText
+        });
+
+        console.log('📤 Sent chat message:', messageText);
+
         setInput('');
     };
 
     return (
         <div className={styles.chatArea}>
             <div className={styles.chatMessages}>
-                {messages.length === 0 && <div style={{ opacity: 0.5, textAlign: 'center', marginTop: '1rem' }}>Connected. Say hello...</div>}
+                {messages.length === 0 && (
+                    <div style={{ opacity: 0.5, textAlign: 'center', marginTop: '1rem' }}>
+                        Connected. Say hello...
+                    </div>
+                )}
                 {messages.map(msg => (
                     <div key={msg.id} className={`${styles.chatBubble} ${msg.sender === 'them' ? styles.bubbleThem : styles.bubbleYou}`}>
                         {msg.sender === 'them' && <span style={{ fontSize: '0.7em', display: 'block', opacity: 0.7, marginBottom: '2px' }}>Anonymous</span>}
@@ -64,6 +133,9 @@ export default function KnotChat({ isActive }: { isActive: boolean }) {
                     onChange={e => setInput(e.target.value)}
                     placeholder="Type a message..."
                 />
+                <button type="submit" className={styles.chatSendButton}>
+                    Send
+                </button>
             </form>
         </div>
     );

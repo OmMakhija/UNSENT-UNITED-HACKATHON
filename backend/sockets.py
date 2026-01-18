@@ -10,6 +10,7 @@ ACTIVE_USERS = set()                 # sid
 STAR_OWNERS = {}                     # star_id -> sid
 PENDING_REQUESTS = {}                # request_id -> dict
 ACTIVE_THREADS = {}                  # thread_id -> set(sids)
+CHAT_HISTORY = {}                    # thread_id -> list of messages
 
 
 def register_socket_handlers(socketio):
@@ -185,6 +186,12 @@ def register_socket_handlers(socketio):
         thread_id = data.get("thread_id")
         if thread_id:
             join_room(thread_id)
+            
+            # Send chat history if it exists
+            if thread_id in CHAT_HISTORY:
+                emit("chat_history", {"messages": CHAT_HISTORY[thread_id]})
+                print(f"📜 Sent chat history to {request.sid}: {len(CHAT_HISTORY[thread_id])} messages")
+            
             print(f"👥 {request.sid} joined thread room: {thread_id}")
             print(f"📊 Thread {thread_id} now has users: {ACTIVE_THREADS.get(thread_id, 'not in ACTIVE_THREADS')}")
 
@@ -208,7 +215,45 @@ def register_socket_handlers(socketio):
             print(f"   Active threads: {list(ACTIVE_THREADS.keys())}")
 
     # -----------------------------
-    # Chat relay
+    # Chat relay - NEW
+    # -----------------------------
+    @socketio.on("chat_message")
+    def chat_message(data):
+        thread_id = data.get("thread_id")
+        text = data.get("text")
+        
+        if not thread_id or not text:
+            print(f"❌ Invalid chat message: missing thread_id or text")
+            return
+        
+        if thread_id not in ACTIVE_THREADS:
+            print(f"❌ Chat message for inactive thread: {thread_id}")
+            print(f"   Available threads: {list(ACTIVE_THREADS.keys())}")
+            return
+        
+        # Store message in history
+        if thread_id not in CHAT_HISTORY:
+            CHAT_HISTORY[thread_id] = []
+        
+        message_data = {
+            "text": text,
+            "sender_sid": request.sid,
+            "timestamp": uuid.uuid4().int >> 64  # Simple timestamp
+        }
+        
+        CHAT_HISTORY[thread_id].append(message_data)
+        
+        print(f"💬 Chat message received from {request.sid}")
+        print(f"   Thread: {thread_id}")
+        print(f"   Text: {text[:50]}...")
+        print(f"   Broadcasting to room: {thread_id}")
+        
+        # Broadcast to ALL in the thread room
+        emit("chat_message", {"text": text, "sender_sid": request.sid}, room=thread_id, include_self=True)
+        print(f"✅ Message broadcast complete")
+
+    # -----------------------------
+    # Message relay (LEGACY - keeping for compatibility)
     # -----------------------------
     @socketio.on("message")
     def message(data):
@@ -229,3 +274,19 @@ def register_socket_handlers(socketio):
             print(f"👋 {sid} left thread room: {thread_id}")
             # DON'T remove from ACTIVE_THREADS here - only on disconnect
             # This allows reconnection if component remounts
+    
+    # -----------------------------
+    # Debug: Confirm registration
+    # -----------------------------
+    print("📋 Registered socket handlers:")
+    print("   - connect")
+    print("   - disconnect")
+    print("   - register_star")
+    print("   - get_active_stars")
+    print("   - request_thread")
+    print("   - respond_thread")
+    print("   - join_thread")
+    print("   - draw")
+    print("   - chat_message  🆕")
+    print("   - message (legacy)")
+    print("   - leave_thread")

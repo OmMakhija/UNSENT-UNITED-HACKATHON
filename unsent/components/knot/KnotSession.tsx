@@ -280,7 +280,13 @@ export default function KnotSession({
       </div>
 
       {/* ---------- CHAT ---------- */}
-      {sessionState === "active" && <KnotChat isActive={true} />}
+      {sessionState === "active" && (
+        <KnotChat 
+          isActive={true} 
+          threadId={threadId}
+          socket={socket}
+        />
+      )}
     </div>
   );
 }
