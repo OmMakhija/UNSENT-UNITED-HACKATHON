@@ -148,6 +148,12 @@ def cleanup_old_stars():
         print("❌ /cleanup error:", repr(e))
         return jsonify({"error": "Internal server error"}), 500
 
+@app.route("/health/db")
+def db_health():
+    res = supabase.table("unsent_messages").select("id").limit(1).execute()
+    return jsonify({"ok": True, "rows": len(res.data)})
+
+
 # ------------------------
 # Run server
 # ------------------------
